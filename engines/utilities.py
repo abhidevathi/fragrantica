@@ -1,12 +1,19 @@
 import requests
 from bs4 import BeautifulSoup
 
-def create_attributes(url, user_agent):
-    
+def get_page(url,
+             user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.1 Safari/605.1.15'):
     headers = {'User-Agent': user_agent}
     page = requests.get(url, headers=headers)
 
     page.raise_for_status()
+
+    return page
+
+def get_soup(page):
+    return BeautifulSoup(page.content, 'html.parser')
+
+def create_attributes(page):
     soup = BeautifulSoup(page.content, "html.parser")
     title = soup.find('h1', itemprop='name')
     title = title.text
@@ -41,4 +48,5 @@ def create_attributes(url, user_agent):
     attributes['rating'] = rating
     attributes['votes'] = votes
     attributes['gender'] = gender
+    attributes['url'] = page.url
     return attributes
