@@ -1,36 +1,69 @@
 import streamlit as st
-import pandas as pd
-import numpy as np
+from fake_useragent import UserAgent
 
-st.write("Hello World")
+from engines.utilities import scrape_fragrance
 
-cols = 3
-rows = 20
-dataframe = pd.DataFrame(
-    np.random.randn(rows, cols), # create a random dataframe with 5 columns and 20 rows with values between 0 and 1
-    columns=('col %d' % i for i in range(cols)))
+import boto3
+from botocore.exceptions import ClientError
 
-st.dataframe(dataframe.style.highlight_max(axis=0)) # Dataframe with highlights
+def connect_to_dynamodb(dynamodb_table_name):
+    try:
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(dynamodb_table_name)
+        return table
+    except ClientError as e:
+        print(f"Error accessing DynamoDB: {e.response['Error']['Message']}")
 
-# st.table(dataframe) # Static Table
+ua = UserAgent()
 
-st.header("Line Chart", divider='blue')
+# Streamlit App
+st.title("Fragrantica Scraper")
+st.write("Enter a Fragrantica URL to scrape fragrance data and save it to AWS DynamoDB.")
 
-chart_data = pd.DataFrame(
-     np.random.randn(rows, cols),
-     columns=['a', 'b', 'c'])
+# url = st.text_input("Fragrance URL", "https://www.fragrantica.com/perfume/Creed/Aventus-9828.html")
 
-st.line_chart(chart_data)
+dynamodb_table_name = "fragrance-data"
 
+table = connect_to_dynamodb(
+    dynamodb_table_name="fragrance-data"
+)
 
-st.header("Map", divider='blue')
-map_data = pd.DataFrame(
-    np.random.randn(1000, 2) / [50, 50] + [37.76, -122.4],
-    columns=['lat', 'lon'])
+# Input field
 
-st.map(map_data)
-
-st.header("Widget", divider="blue")
-
-x = st.slider('x')
-st.write(x, 'squared is', x * x)
+url = st.text_input(
+    "Fragrance URL", 
+    "https://www.fragrantica.com/perfume/Creed/Aventus-9828.html"
+)
+# Button to trigger scraping and saving
+if st.button("Scrape and Save"):
+    if url:
+        # First, check if it's in DynamoDB
+        with st.spinner("Checking DynamoDB..."):
+            response = table.get_item(
+                Key={'url': url}
+            )
+        if 'Item' in response:
+            st.success("Data found in DynamoDB.")
+            fragrance_data = response['Item']
+        else:
+            st.warning("Data not found in DynamoDB. Scraping the website...")
+            # If not found, scrape the data
+            with st.spinner("Scraping data..."):
+                fragrance_data = scrape_fragrance(url)
+                st.success("Scraping data from Fragrantica...")
+                # Save the scraped data to DynamoDB
+                table.put_item(
+                    Item={
+                        'url': url,
+                        'data': fragrance_data
+                    }
+                )
+            st.success("Data saved to DynamoDB.")
+            
+        if "error" in fragrance_data:
+            st.error(fragrance_data["error"])
+        else:
+            # st.success(f"Scraped: {fragrance_data['data']['name']}")
+            st.json(fragrance_data)  # Display the data
+    else:
+        st.warning("Please enter a URL.")
